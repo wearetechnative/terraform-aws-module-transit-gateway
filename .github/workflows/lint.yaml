@@ -1,0 +1,17 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    uses: wearetechnative/reusable_workflow_terraform/.github/workflows/lint.yml@v1
+    # strict: fail the build on TFLint findings. Turn this on once the module
+    #   is clean - leaving it off while findings exist keeps the badge honest
+    #   without blocking day-to-day work.
+    # skip-validate: only for modules declaring configuration_aliases, which
+    #   cannot be validated as a root module.
+    with:
+      strict: true

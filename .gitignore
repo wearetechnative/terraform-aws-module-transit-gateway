@@ -1,0 +1,22 @@
+# Local .terraform directories
+**/.terraform/*
+**/.terraform*
+
+# Provider lock file.
+# Deliberately NOT committed in a reusable module: pinning providers here would
+# freeze what consumers resolve. In a root module (customer infrastructure) the
+# opposite holds and this file SHOULD be committed.
+.terraform.lock.hcl
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+
+# Ignore override files as they are usually used to override resources locally
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
