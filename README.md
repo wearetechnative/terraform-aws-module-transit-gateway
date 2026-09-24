@@ -28,7 +28,8 @@ module "transit_gateway_attachment" {
   vpc_id                         = module.network.vpc_id
   subnet_ids                     = module.network.subnet_ids_by_group["transit_gateway"]
 
-  # Set this to true to enable route propagation or use static routes
+  # Enable this only when all VPC CIDRs should be added to the TGW route table
+  # automatically. Leave it false when managing TGW routes explicitly.
   enable_propagation = true
 
   routes = {
