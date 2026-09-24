@@ -9,8 +9,14 @@ variable "vpc_id" {
 }
 
 variable "transit_gateway_id" {
-  description = "ID of the transit gateway shared with this account."
+  description = "ID of the transit gateway."
   type        = string
+}
+
+variable "transit_gateway_route_table_id" {
+  description = "TGW route table to associate and propagate to. Leave null for a cross-account attachment managed by the TGW owner."
+  type        = string
+  default     = null
 }
 
 variable "subnet_ids" {
@@ -24,7 +30,7 @@ variable "subnet_ids" {
 }
 
 variable "routes" {
-  description = "VPC route-table routes that send traffic to the transit gateway."
+  description = "Routes added to VPC route tables that send traffic to the transit gateway."
   type = map(object({
     route_table_id              = string
     destination_cidr_block      = optional(string)
@@ -37,8 +43,14 @@ variable "routes" {
       for route in values(var.routes) :
       (route.destination_cidr_block != null) != (route.destination_ipv6_cidr_block != null)
     ])
-    error_message = "Each route must define exactly one of destination_cidr_block or destination_ipv6_cidr_block."
+    error_message = "Each route must define exactly one IPv4 or IPv6 destination CIDR block."
   }
+}
+
+variable "enable_propagation" {
+  description = "Propagate all VPC CIDRs into the supplied TGW route table. Enable explicitly only when that reachability is intended."
+  type        = bool
+  default     = false
 }
 
 variable "dns_support" {

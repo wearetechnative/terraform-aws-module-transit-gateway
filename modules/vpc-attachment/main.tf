@@ -1,7 +1,7 @@
 resource "aws_ec2_transit_gateway_vpc_attachment" "this" {
-  subnet_ids         = var.subnet_ids
   transit_gateway_id = var.transit_gateway_id
   vpc_id             = var.vpc_id
+  subnet_ids         = var.subnet_ids
 
   dns_support            = var.dns_support ? "enable" : "disable"
   ipv6_support           = var.ipv6_support ? "enable" : "disable"
@@ -12,7 +12,23 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "this" {
   })
 }
 
-resource "aws_route" "transit_gateway" {
+resource "aws_ec2_transit_gateway_route_table_association" "this" {
+  count = var.transit_gateway_route_table_id == null ? 0 : 1
+
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.this.id
+  transit_gateway_route_table_id = var.transit_gateway_route_table_id
+}
+
+resource "aws_ec2_transit_gateway_route_table_propagation" "this" {
+  count = var.transit_gateway_route_table_id == null || !var.enable_propagation ? 0 : 1
+
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.this.id
+  transit_gateway_route_table_id = var.transit_gateway_route_table_id
+
+  depends_on = [aws_ec2_transit_gateway_route_table_association.this]
+}
+
+resource "aws_route" "this" {
   for_each = var.routes
 
   route_table_id              = each.value.route_table_id
