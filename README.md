@@ -1,6 +1,6 @@
 # Terraform AWS Transit Gateway
 
-This repository contains three small modules:
+This repository contains three modules:
 
 | Module | Deploy in | Purpose |
 |---|---|---|
@@ -8,56 +8,41 @@ This repository contains three small modules:
 | `modules/vpc-attachment` | VPC account | Attaches a VPC and adds routes to its VPC route tables |
 | `modules/attachment-accepter` | TGW account | Accepts a cross-account attachment and configures its TGW association and propagation |
 
-## VPC and Transit Gateway in the same account
+Each AWS account has its own Terraform repository or state and uses its normal
+AWS provider. This module does not require provider aliases.
 
-Call the root module and attachment module with the same AWS provider:
+## Three-account example
 
-```hcl
-module "transit_gateway" {
-  source = "git::https://github.com/wearetechnative/terraform-aws-module-transit-gateway.git"
+This example connects one VPC in each of three accounts:
 
-  name = "central"
-}
-
-module "transit_gateway_attachment" {
-  source = "git::https://github.com/wearetechnative/terraform-aws-module-transit-gateway.git//modules/vpc-attachment"
-
-  name                           = "application"
-  transit_gateway_id             = module.transit_gateway.id
-  transit_gateway_route_table_id = module.transit_gateway.route_table_id
-  vpc_id                         = module.network.vpc_id
-  subnet_ids                     = module.network.subnet_ids_by_group["transit_gateway"]
-
-  # Enable this only when all VPC CIDRs should be added to the TGW route table
-  # automatically. Leave it false when managing TGW routes explicitly.
-  enable_propagation = true
-
-  routes = {
-    for index, route_table_id in module.network.route_table_ids_by_group["private"] :
-    "private-${index}" => {
-      route_table_id         = route_table_id
-      destination_cidr_block = "10.0.0.0/8"
-    }
-  }
-}
+```text
+TGW account          111111111111  VPC 10.10.0.0/16
+  Transit Gateway and TGW route table
+             │
+             ├── Application account  222222222222  VPC 10.20.0.0/16
+             └── Data account         333333333333  VPC 10.30.0.0/16
 ```
 
-This creates the TGW, attachment, TGW association and propagation, and the VPC
-routes in one apply.
+Deploy the VPC/network module in all three accounts first. Each VPC needs a
+dedicated TGW attachment subnet in every required Availability Zone. The
+examples assume the network module exposes `vpc_id`,
+`subnet_ids_by_group`, and `route_table_ids_by_group`.
 
-Use one attachment subnet per Availability Zone. The routes usually belong to
-the private workload route tables, not only to the attachment subnet route
-tables.
+After the VPCs exist, the TGW rollout has three stages and four Terraform
+applies:
 
-## VPC in another AWS account
+```text
+1. TGW account:         create and share the TGW; attach its own VPC
+2. Application account: create its attachment
+   Data account:        create its attachment
+3. TGW account:         accept and route both attachments
+```
 
-For cross-account use, the TGW owner shares the gateway through AWS RAM. The
-VPC account creates the attachment. The TGW account then accepts and routes it.
+The two attachment deployments in stage 2 can run in parallel.
 
-Each account uses its own Terraform repository or state and its normal AWS
-provider.
+### Stage 1: TGW account
 
-### 1. TGW account: create and share the gateway
+Create the TGW and share it with both VPC accounts:
 
 ```hcl
 module "transit_gateway" {
@@ -66,24 +51,56 @@ module "transit_gateway" {
   name = "central"
 
   resource_share = {
-    principals = ["222222222222"]
+    principals = [
+      "222222222222",
+      "333333333333",
+    ]
   }
 }
 
-# Child-module outputs are internal to this Terraform state. Re-export the TGW
-# ID because the connected VPC account configuration needs it.
+module "local_vpc_attachment" {
+  source = "git::https://github.com/wearetechnative/terraform-aws-module-transit-gateway.git//modules/vpc-attachment"
 
+  name                           = "network"
+  transit_gateway_id             = module.transit_gateway.id
+  transit_gateway_route_table_id = module.transit_gateway.route_table_id
+  vpc_id                         = module.network.vpc_id
+  subnet_ids                     = module.network.subnet_ids_by_group["transit_gateway"]
+  route_table_ids                = module.network.route_table_ids_by_group["private"]
+
+  destination_cidr_blocks = [
+    "10.20.0.0/16",
+    "10.30.0.0/16",
+  ]
+
+  enable_propagation = true
+}
+
+# Child-module outputs are internal to this Terraform state. Re-export the TGW
+# ID because the connected VPC account configurations need it.
 output "transit_gateway_id" {
   value = module.transit_gateway.id
 }
 ```
 
-Pass `transit_gateway_id` to the VPC account configuration.
+Pass `transit_gateway_id` to both connected account configurations. This can
+be done through pipeline variables, Terraform remote state, or a configuration
+store such as SSM Parameter Store.
 
-### 2. VPC account: create the attachment and VPC routes
+When sharing outside AWS Organizations, each VPC account must accept the RAM
+resource-share invitation before it can create an attachment.
+
+### Stage 2a: application account
+
+The application VPC is `10.20.0.0/16`. Its private subnet route tables need
+routes to the TGW account VPC and the data VPC:
 
 ```hcl
-module "connected_vpc_attachment" {
+variable "transit_gateway_id" {
+  type = string
+}
+
+module "transit_gateway_attachment" {
   source = "git::https://github.com/wearetechnative/terraform-aws-module-transit-gateway.git//modules/vpc-attachment"
 
   name               = "application"
@@ -91,77 +108,145 @@ module "connected_vpc_attachment" {
   vpc_id              = module.network.vpc_id
   subnet_ids          = module.network.subnet_ids_by_group["transit_gateway"]
 
-  # Do not set transit_gateway_route_table_id here. The VPC account cannot
-  # manage a route table owned by the TGW account.
-  routes = {
-    for index, route_table_id in module.network.route_table_ids_by_group["private"] :
-    "private-${index}" => {
-      route_table_id         = route_table_id
-      destination_cidr_block = "10.0.0.0/8"
-    }
-  }
+  route_table_ids = module.network.route_table_ids_by_group["private"]
+
+  destination_cidr_blocks = [
+    "10.10.0.0/16",
+    "10.30.0.0/16",
+  ]
 }
 
 output "transit_gateway_attachment_id" {
-  value = module.connected_vpc_attachment.id
+  value = module.transit_gateway_attachment.id
 }
 ```
 
-Pass `transit_gateway_attachment_id` back to the TGW account configuration.
+### Stage 2b: data account
 
-### 3. TGW account: accept and route the attachment
+The data VPC is `10.30.0.0/16`. Its private subnet route tables need routes to
+the TGW account VPC and the application VPC:
 
 ```hcl
-module "connected_vpc_attachment_accepter" {
-  source = "git::https://github.com/wearetechnative/terraform-aws-module-transit-gateway.git//modules/attachment-accepter"
+variable "transit_gateway_id" {
+  type = string
+}
 
-  name                           = "application"
-  attachment_id                  = var.transit_gateway_attachment_id
-  transit_gateway_route_table_id = module.transit_gateway.route_table_id
+module "transit_gateway_attachment" {
+  source = "git::https://github.com/wearetechnative/terraform-aws-module-transit-gateway.git//modules/vpc-attachment"
 
-  # Explicit opt-in: advertise the connected VPC's CIDRs.
-  enable_propagation = true
+  name               = "data"
+  transit_gateway_id = var.transit_gateway_id
+  vpc_id              = module.network.vpc_id
+  subnet_ids          = module.network.subnet_ids_by_group["transit_gateway"]
+
+  route_table_ids = module.network.route_table_ids_by_group["private"]
+
+  destination_cidr_blocks = [
+    "10.10.0.0/16",
+    "10.20.0.0/16",
+  ]
+}
+
+output "transit_gateway_attachment_id" {
+  value = module.transit_gateway_attachment.id
 }
 ```
 
-The deployment order is:
+Pass both `transit_gateway_attachment_id` values back to the TGW account.
 
-```text
-TGW and RAM share (TGW account)
-  -> VPC attachment and VPC routes (VPC account)
-  -> acceptance, association and propagation (TGW account)
+### Stage 3: TGW account
+
+Declare the attachment IDs received from the two VPC account deployments:
+
+```hcl
+variable "attachments" {
+  type = map(object({
+    attachment_id      = string
+    enable_propagation = optional(bool, false)
+  }))
+}
 ```
 
-When sharing outside AWS Organizations, the VPC account must first accept the
-RAM resource-share invitation. That can be managed separately with
-`aws_ram_resource_share_accepter` in the VPC account.
+For example, in the TGW account's `production.tfvars`:
 
-If `auto_accept_shared_attachments = true` is set on the root TGW module, pass
-`accept_attachment = false` to `modules/attachment-accepter`. The module is
-still required for association and propagation.
+```hcl
+attachments = {
+  application = {
+    attachment_id      = "tgw-attach-0123456789abcdef0"
+    enable_propagation = true
+  }
+
+  data = {
+    attachment_id      = "tgw-attach-0fedcba9876543210"
+    enable_propagation = true
+  }
+}
+```
+
+Accept, associate, and optionally propagate all attachments:
+
+```hcl
+module "attachment_accepter" {
+  for_each = var.attachments
+  source   = "git::https://github.com/wearetechnative/terraform-aws-module-transit-gateway.git//modules/attachment-accepter"
+
+  name                           = each.key
+  attachment_id                  = each.value.attachment_id
+  transit_gateway_route_table_id = module.transit_gateway.route_table_id
+
+  accept_attachment  = true
+  enable_propagation = each.value.enable_propagation
+}
+```
+
+After this apply, the TGW route table contains propagated routes similar to:
+
+```text
+10.10.0.0/16 -> TGW account VPC attachment
+10.20.0.0/16 -> application attachment
+10.30.0.0/16 -> data attachment
+```
+
+Combined with the VPC routes created in stages 1 and 2, this provides routing
+between all three VPCs. Security groups and network ACLs must also permit the
+intended traffic.
 
 ## Route propagation
 
-Route propagation is disabled by default. Set `enable_propagation = true` on
-`modules/vpc-attachment` for a same-account attachment, or on
-`modules/attachment-accepter` for a cross-account attachment, only when the
-attached VPC's complete CIDR ranges should be advertised into that TGW route
-table. AWS does not support filtering individual VPC CIDRs from propagated
-routes.
+Route propagation is disabled by default. Enable it only when all CIDRs from an
+attached VPC should be added to the TGW route table automatically. AWS does not
+support filtering individual VPC CIDRs from propagated routes.
 
-## Passing values between account states
+If you do not enable propagation, manage the required TGW routes explicitly in
+the TGW account. The `destination_cidr_blocks` supplied to
+`modules/vpc-attachment` configure VPC route tables; they do not configure the
+TGW route table.
 
-The same account ownership applies when each account has its own state:
+## Same-account attachment
 
-1. Apply the root module in the TGW account and publish `id` and
-   `route_table_id`.
-2. Apply `modules/vpc-attachment` in the VPC account using the published TGW
-   ID, then publish its `id` output.
-3. Apply `modules/attachment-accepter` in the TGW account using that attachment
-   ID.
+When the TGW and VPC are in the same account, call the root module and
+`modules/vpc-attachment` from the same Terraform configuration. Supply
+`transit_gateway_route_table_id` so that the attachment module can also create
+the association and optional propagation:
 
-The output exchange can use your deployment pipeline, Terraform remote state,
-or a configuration store such as SSM Parameter Store.
+```hcl
+module "transit_gateway_attachment" {
+  source = "git::https://github.com/wearetechnative/terraform-aws-module-transit-gateway.git//modules/vpc-attachment"
+
+  name                           = "application"
+  transit_gateway_id             = module.transit_gateway.id
+  transit_gateway_route_table_id = module.transit_gateway.route_table_id
+  vpc_id                         = module.network.vpc_id
+  subnet_ids                     = module.network.subnet_ids_by_group["transit_gateway"]
+  route_table_ids                = module.network.route_table_ids_by_group["private"]
+
+  destination_cidr_blocks = [
+    "10.30.0.0/16",
+  ]
+
+  enable_propagation = true
+}
+```
 
 ## Root module outputs
 

@@ -4,7 +4,6 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "this" {
   subnet_ids         = var.subnet_ids
 
   dns_support            = var.dns_support ? "enable" : "disable"
-  ipv6_support           = var.ipv6_support ? "enable" : "disable"
   appliance_mode_support = var.appliance_mode_support ? "enable" : "disable"
 
   tags = merge(var.tags, {
@@ -28,13 +27,20 @@ resource "aws_ec2_transit_gateway_route_table_propagation" "this" {
   depends_on = [aws_ec2_transit_gateway_route_table_association.this]
 }
 
-resource "aws_route" "this" {
-  for_each = var.routes
+locals {
+  # Create one route for every route-table and destination combination.
+  routes = {
+    for route in setproduct(var.route_table_ids, var.destination_cidr_blocks) :
+    "${route[0]}:${route[1]}" => route
+  }
+}
 
-  route_table_id              = each.value.route_table_id
-  destination_cidr_block      = each.value.destination_cidr_block
-  destination_ipv6_cidr_block = each.value.destination_ipv6_cidr_block
-  transit_gateway_id          = var.transit_gateway_id
+resource "aws_route" "this" {
+  for_each = local.routes
+
+  route_table_id         = each.value[0]
+  destination_cidr_block = each.value[1]
+  transit_gateway_id     = var.transit_gateway_id
 
   depends_on = [aws_ec2_transit_gateway_vpc_attachment.this]
 }

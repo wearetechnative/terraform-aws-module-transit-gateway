@@ -29,22 +29,16 @@ variable "subnet_ids" {
   }
 }
 
-variable "routes" {
-  description = "Routes added to VPC route tables that send traffic to the transit gateway."
-  type = map(object({
-    route_table_id              = string
-    destination_cidr_block      = optional(string)
-    destination_ipv6_cidr_block = optional(string)
-  }))
-  default = {}
+variable "route_table_ids" {
+  description = "VPC route table IDs that should receive routes to the transit gateway."
+  type        = list(string)
+  default     = []
+}
 
-  validation {
-    condition = alltrue([
-      for route in values(var.routes) :
-      (route.destination_cidr_block != null) != (route.destination_ipv6_cidr_block != null)
-    ])
-    error_message = "Each route must define exactly one IPv4 or IPv6 destination CIDR block."
-  }
+variable "destination_cidr_blocks" {
+  description = "IPv4 destination CIDRs routed through the transit gateway in every supplied VPC route table."
+  type        = set(string)
+  default     = []
 }
 
 variable "enable_propagation" {
@@ -57,12 +51,6 @@ variable "dns_support" {
   description = "Enable DNS support for the attachment."
   type        = bool
   default     = true
-}
-
-variable "ipv6_support" {
-  description = "Enable IPv6 support for the attachment."
-  type        = bool
-  default     = false
 }
 
 variable "appliance_mode_support" {
