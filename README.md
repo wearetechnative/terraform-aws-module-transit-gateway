@@ -254,3 +254,50 @@ module "transit_gateway_attachment" {
 - `arn` — Transit Gateway ARN
 - `route_table_id` — managed TGW route-table ID
 - `resource_share_arn` — RAM share ARN, or `null`
+
+## Module reference
+
+<!-- BEGIN_TF_DOCS -->
+## Providers
+
+| Name | Version |
+|------|---------|
+| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 5.0 |
+
+## Modules
+
+No modules.
+
+## Resources
+
+| Name | Type |
+|------|------|
+| [aws_ec2_transit_gateway.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_transit_gateway) | resource |
+| [aws_ec2_transit_gateway_route_table.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_transit_gateway_route_table) | resource |
+| [aws_ram_principal_association.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ram_principal_association) | resource |
+| [aws_ram_resource_association.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ram_resource_association) | resource |
+| [aws_ram_resource_share.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ram_resource_share) | resource |
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_amazon_side_asn"></a> [amazon\_side\_asn](#input\_amazon\_side\_asn) | Private ASN for the Amazon side of BGP sessions. | `number` | `64512` | no |
+| <a name="input_auto_accept_shared_attachments"></a> [auto\_accept\_shared\_attachments](#input\_auto\_accept\_shared\_attachments) | Automatically accept cross-account attachment requests. | `bool` | `false` | no |
+| <a name="input_description"></a> [description](#input\_description) | Transit gateway description. Defaults to name. | `string` | `null` | no |
+| <a name="input_dns_support"></a> [dns\_support](#input\_dns\_support) | Enable DNS support on the transit gateway. | `bool` | `true` | no |
+| <a name="input_name"></a> [name](#input\_name) | Name of the transit gateway. | `string` | n/a | yes |
+| <a name="input_resource_share"></a> [resource\_share](#input\_resource\_share) | Optional AWS RAM share for other accounts, organizational units, or an organization. | <pre>object({<br>    name                      = optional(string)<br>    allow_external_principals = optional(bool, false)<br>    principals                = set(string)<br>    tags                      = optional(map(string), {})<br>  })</pre> | `null` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to all supported resources. | `map(string)` | `{}` | no |
+| <a name="input_vpn_ecmp_support"></a> [vpn\_ecmp\_support](#input\_vpn\_ecmp\_support) | Enable equal-cost multi-path routing for VPN attachments. | `bool` | `true` | no |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| <a name="output_arn"></a> [arn](#output\_arn) | Transit gateway ARN. |
+| <a name="output_id"></a> [id](#output\_id) | Transit gateway ID. |
+| <a name="output_owner_id"></a> [owner\_id](#output\_owner\_id) | AWS account ID that owns the transit gateway. |
+| <a name="output_resource_share_arn"></a> [resource\_share\_arn](#output\_resource\_share\_arn) | AWS RAM resource share ARN, or null when sharing is disabled. |
+| <a name="output_route_table_id"></a> [route\_table\_id](#output\_route\_table\_id) | ID of the transit gateway route table. |
+<!-- END_TF_DOCS -->

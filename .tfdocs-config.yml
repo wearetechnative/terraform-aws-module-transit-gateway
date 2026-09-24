@@ -1,0 +1,5 @@
+formatter: "markdown"
+
+sections:
+  hide:
+    - requirements
