@@ -21,6 +21,14 @@ output "route_table_ids" {
   }
 }
 
+output "vpc_attachment_ids" {
+  description = "VPC attachment IDs created by this module, keyed by their configured names."
+  value = {
+    for key, attachment in aws_ec2_transit_gateway_vpc_attachment.this :
+    key => attachment.id
+  }
+}
+
 output "resource_share_arn" {
   description = "AWS RAM resource share ARN, or null when sharing is disabled."
   value       = var.resource_share == null ? null : aws_ram_resource_share.this[0].arn

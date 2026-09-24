@@ -73,6 +73,62 @@ variable "resource_share" {
   default = null
 }
 
+variable "vpc_attachments" {
+  description = "VPC attachments created in the same AWS account as the transit gateway, including their VPC and TGW routing."
+  type = map(object({
+    name                     = optional(string)
+    vpc_id                   = string
+    subnet_ids               = set(string)
+    association_route_table  = string
+    propagation_route_tables = optional(set(string), [])
+    dns_support              = optional(bool, true)
+    ipv6_support             = optional(bool, false)
+    appliance_mode_support   = optional(bool, false)
+    tags                     = optional(map(string), {})
+    routes = optional(map(object({
+      route_table_id              = string
+      destination_cidr_block      = optional(string)
+      destination_ipv6_cidr_block = optional(string)
+    })), {})
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for attachment in values(var.vpc_attachments) :
+      contains(keys(var.route_tables), attachment.association_route_table)
+    ])
+    error_message = "Every VPC attachment association_route_table must reference a key in route_tables."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for attachment in values(var.vpc_attachments) : [
+        for route_table in attachment.propagation_route_tables :
+        contains(keys(var.route_tables), route_table)
+      ]
+    ]))
+    error_message = "Every VPC attachment propagation_route_tables entry must reference a key in route_tables."
+  }
+
+  validation {
+    condition = alltrue([
+      for attachment in values(var.vpc_attachments) : length(attachment.subnet_ids) > 0
+    ])
+    error_message = "Every VPC attachment must contain at least one subnet ID."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for attachment in values(var.vpc_attachments) : [
+        for route in values(attachment.routes) :
+        (route.destination_cidr_block != null) != (route.destination_ipv6_cidr_block != null)
+      ]
+    ]))
+    error_message = "Each VPC route must define exactly one IPv4 or IPv6 destination CIDR block."
+  }
+}
+
 variable "attachments" {
   description = "Existing attachment IDs and their owner-side route-table policy. Set accept for cross-account attachments that require explicit acceptance."
   type = map(object({
