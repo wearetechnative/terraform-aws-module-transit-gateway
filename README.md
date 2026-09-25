@@ -25,14 +25,16 @@ dedicated TGW attachment subnet in every required Availability Zone. The
 examples assume the network module exposes `vpc_id`,
 `subnet_ids_by_group`, and `route_table_ids_by_group`.
 
-After the VPCs exist, the TGW rollout has three stages and four Terraform
-applies:
+After the VPCs exist, manual cross-account attachment acceptance requires four
+stages and six Terraform applies:
 
 ```text
 1. TGW account:         create and share the TGW; attach its own VPC
 2. Application account: create its attachment
    Data account:        create its attachment
 3. TGW account:         accept and route both attachments
+4. Application account: add its VPC routes
+   Data account:        add its VPC routes
 ```
 
 The two attachment deployments in stage 2 can run in parallel.
@@ -107,10 +109,8 @@ module "transit_gateway_attachment" {
 
   route_table_ids = module.network.route_table_ids_by_group["private"]
 
-  destination_cidr_blocks = [
-    "10.10.0.0/16",
-    "10.30.0.0/16",
-  ]
+  # Add the destinations after the TGW account accepts this attachment.
+  destination_cidr_blocks = []
 }
 
 output "transit_gateway_attachment_id" {
@@ -138,10 +138,8 @@ module "transit_gateway_attachment" {
 
   route_table_ids = module.network.route_table_ids_by_group["private"]
 
-  destination_cidr_blocks = [
-    "10.10.0.0/16",
-    "10.20.0.0/16",
-  ]
+  # Add the destinations after the TGW account accepts this attachment.
+  destination_cidr_blocks = []
 }
 
 output "transit_gateway_attachment_id" {
@@ -204,9 +202,33 @@ After this apply, the TGW route table contains propagated routes similar to:
 10.30.0.0/16 -> data attachment
 ```
 
-Combined with the VPC routes created in stages 1 and 2, this provides routing
-between all three VPCs. Security groups and network ACLs must also permit the
-intended traffic.
+### Stage 4: application and data accounts
+
+Wait until both attachments are `available`. Then add the intended destinations
+and apply the two VPC account configurations again.
+
+Application account:
+
+```hcl
+destination_cidr_blocks = [
+  "10.10.0.0/16",
+  "10.30.0.0/16",
+]
+```
+
+Data account:
+
+```hcl
+destination_cidr_blocks = [
+  "10.10.0.0/16",
+  "10.20.0.0/16",
+]
+```
+
+AWS cannot add a TGW target to these VPC route tables while a cross-account
+attachment is still awaiting acceptance. Combined with the local VPC routes
+created in stage 1, stage 4 provides routing between all three VPCs. Security
+groups and network ACLs must also permit the intended traffic.
 
 ## Route propagation
 
