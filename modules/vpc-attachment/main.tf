@@ -28,18 +28,26 @@ resource "aws_ec2_transit_gateway_route_table_propagation" "this" {
 }
 
 locals {
-  # Create one route for every route-table and destination combination.
+  route_combinations = setproduct(
+    var.route_table_ids,
+    var.destination_cidr_blocks,
+  )
+
+  # Create one route for every route table and destination combination.
   routes = {
-    for route in setproduct(var.route_table_ids, var.destination_cidr_blocks) :
-    "${route[0]}:${route[1]}" => route
+    for route in local.route_combinations :
+    "${route[0]}:${route[1]}" => {
+      route_table_id         = route[0]
+      destination_cidr_block = route[1]
+    }
   }
 }
 
 resource "aws_route" "this" {
   for_each = local.routes
 
-  route_table_id         = each.value[0]
-  destination_cidr_block = each.value[1]
+  route_table_id         = each.value.route_table_id
+  destination_cidr_block = each.value.destination_cidr_block
   transit_gateway_id     = var.transit_gateway_id
 
   depends_on = [aws_ec2_transit_gateway_vpc_attachment.this]
