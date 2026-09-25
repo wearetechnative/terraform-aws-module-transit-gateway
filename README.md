@@ -8,9 +8,6 @@ This repository contains three modules:
 | `modules/vpc-attachment` | VPC account | Attaches a VPC and adds routes to its VPC route tables |
 | `modules/attachment-accepter` | TGW account | Accepts a cross-account attachment and configures its TGW association and propagation |
 
-Each AWS account has its own Terraform repository or state and uses its normal
-AWS provider. This module does not require provider aliases.
-
 ## Three-account example
 
 This example connects one VPC in each of three accounts:
